@@ -2,6 +2,8 @@ package rocks.fretx.chorddetection;
 
 import android.support.annotation.Nullable;
 
+import org.jtransforms.fft.DoubleFFT_1D;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -15,6 +17,10 @@ public class ChordDetector extends AudioAnalyzer {
 
     private short[] tempBuffer;
     private List<Chord> targetChords;
+    protected Chord detectedChord;
+
+    //Plot
+    double[] magnitudeSpectrum;
 
     public ChordDetector(final int samplingFrequency, final int frameLength, final int frameShift, final List<Chord> targetChords) {
 //        int frameLength = Math.round ((float)audioData.samplingFrequency * CHROMAGRAM_FRAME_LENGTH_IN_S);
@@ -31,22 +37,28 @@ public class ChordDetector extends AudioAnalyzer {
 
 
     private double[] getChromagram(short[] audioBuffer){
-
+        //Make sure the buffer length is even
+        short[] tmpAudio;
+        if((audioBuffer.length % 2) == 0){
+            tmpAudio = audioBuffer;
+        } else{
+            tmpAudio = new short[audioBuffer.length+1];
+            for (int i = 0; i < audioBuffer.length; i++) {
+                tmpAudio[i] = audioBuffer[i];
+            }
+            tmpAudio[audioBuffer.length] = 0;
+        }
         double[] buf = shortToDouble(audioBuffer);
-        double[] window = getHammingWindow(buf.length);
-        for (int i = 0; i < buf.length; i++) {
-            buf[i] *= window[i];
+        //FFT
+        DoubleFFT_1D fft = new DoubleFFT_1D(buf.length);
+        fft.realForward(buf);
+        //Get Magnitude spectrum from FFT
+        magnitudeSpectrum = new double[buf.length/2];
+        magnitudeSpectrum[0] = Math.abs(buf[0]);
+        magnitudeSpectrum[magnitudeSpectrum.length-1] = Math.abs(buf[1]);
+        for (int i = 1; i < magnitudeSpectrum.length-1; i++) {
+            magnitudeSpectrum[i] = Math.sqrt((buf[2*i]*buf[2*i]) + (buf[2*i+1]*buf[2*i+1]));
         }
-
-        double[] imaginaryPart = new double[buf.length];
-        Arrays.fill(imaginaryPart,0);
-        double[] fft = FFTbase.fft(buf,imaginaryPart,true);
-        double[] chromaSpectrum = new double[fft.length/2];
-        //TODO:plot and see how FFT works
-        for (int i = 0; i < chromaSpectrum.length; i++) {
-            chromaSpectrum[i] = Math.sqrt(Math.abs(fft[i]));
-        }
-
 
         double A1 = 55; //reference note A1 in Hz
         int peakSearchWidth = 2;
@@ -58,7 +70,7 @@ public class ChordDetector extends AudioAnalyzer {
                     int kprime = (int) Math.round( frequencyFromInterval(A1,interval) * (double)phi * (double)harmonic / ((double)samplingFrequency/(double)frameLength) );
                     int k0 = kprime - (peakSearchWidth*harmonic);
                     int k1 = kprime + (peakSearchWidth*harmonic);
-                    chromagram[interval] += findMaxValue(chromaSpectrum,k0,k1) / harmonic;
+                    chromagram[interval] += findMaxValue(magnitudeSpectrum,k0,k1) / harmonic;
                 }
             }
         }
@@ -80,7 +92,7 @@ public class ChordDetector extends AudioAnalyzer {
             Arrays.fill(bitMask,1);
             int[] notes = targetChords.get(i).getNotes();
             for (int j = 0; j < notes.length; j++) {
-                bitMask[notes[i]] = 0;
+                bitMask[notes[j]-1] = 0;
             }
             for (int j = 0; j < chromagram.length; j++) {
                 deltas[i] += chromagram[j] * bitMask[j];
@@ -128,9 +140,10 @@ public class ChordDetector extends AudioAnalyzer {
         }
         atFrame = 1;
         head = 0;
+        double[] chromagram;
         while((tempBuffer = getNextFrame()) != null ){
-            double[] chromagram = getChromagram(tempBuffer);
-            Chord detectedChord = detectChord(chromagram,targetChords);
+            chromagram = getChromagram(tempBuffer);
+            detectedChord = detectChord(chromagram,targetChords);
         }
         processingFinished();
     }

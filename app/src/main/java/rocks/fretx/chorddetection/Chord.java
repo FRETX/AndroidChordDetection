@@ -17,6 +17,9 @@ public class Chord {
         this.type = type;
     }
 
+    public String getChordString(){
+        return root + type;
+    }
     private int noteNameToSemitoneNumber(String name){
         String newName = name;
         if(name.length() == 2){
