@@ -32,7 +32,7 @@ abstract public class AudioAnalyzer {
     public static double[] shortToDouble(short[] audio) {
         double[] output = new double[audio.length];
         for (int i = 0; i < output.length; i++) {
-            output[i] = audio[i] / 32768;
+            output[i] = (double)audio[i] / 32768;
         }
         return output;
     }

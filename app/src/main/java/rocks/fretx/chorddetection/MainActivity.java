@@ -34,11 +34,10 @@ public class MainActivity extends AppCompatActivity {
     private boolean processingIsRunning = false;
     private boolean practiceMode = true;
     private TextView chordText;
+	private TextView volumeText;
     ChordDetector chordDetector;
     ArrayList<Chord> targetChords = new ArrayList<Chord>(0);
 
-    //Plot
-    private XYPlot plot;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -61,8 +60,7 @@ public class MainActivity extends AppCompatActivity {
         //Initialize GUI
         //All the findViewById()'s go here]
         chordText = (TextView) findViewById(R.id.chordText);
-        //Plot
-        plot = (XYPlot) findViewById(R.id.plot);
+        volumeText = (TextView) findViewById(R.id.volumeText);
 
     }
 
@@ -97,16 +95,16 @@ public class MainActivity extends AppCompatActivity {
     private void startAudioThread(){
         //Audio Parameters
         int maxFs = AudioInputHandler.getMaxSamplingFrequency();
-        int minBufferSize = AudioInputHandler.getMinBufferSize(maxFs);
-
-        double frameLengthInSeconds = 0.25;
-        int frameLength = (int) Math.round(maxFs * frameLengthInSeconds);
-
-        int audioBufferSize = minBufferSize;
-        if(frameLength > minBufferSize){
-            audioBufferSize = frameLength;
+        if(maxFs > 8000){
+            maxFs = 8000;
         }
 
+        int minBufferSize = AudioInputHandler.getMinBufferSize(maxFs);
+        double bufferSizeInSeconds = 0.25;
+        int targetBufferSize = (int) Math.round(maxFs * bufferSizeInSeconds);
+        int audioBufferSize = (int) Math.pow(2,Math.ceil(Math.log((double)targetBufferSize)/Math.log(2))); //round up to nearest power of 2
+
+        int frameLength = audioBufferSize/2;
 
         audioInputHandler = new AudioInputHandler(maxFs,audioBufferSize);
 
@@ -136,28 +134,12 @@ public class MainActivity extends AppCompatActivity {
                             @Override
                             public void run() {
                             //TODO: GUI stuff
-                                //Plot
-                                if(chordDetector.magnitudeSpectrum != null){
-                                    Number[] spec = new Number[chordDetector.magnitudeSpectrum.length];
-                                    for (int i = 0; i < spec.length; i++) {
-                                        spec[i] = chordDetector.magnitudeSpectrum[i];
-                                    }
-                                    XYSeries series1 = new SimpleXYSeries(Arrays.asList(spec), SimpleXYSeries.ArrayFormat.Y_VALS_ONLY, "FFT");
-                                    LineAndPointFormatter series1Format = new LineAndPointFormatter();
-                                    series1Format.setPointLabelFormatter(new PointLabelFormatter());
-                                    series1Format.configure(getApplicationContext(), R.xml.line_point_formatter_with_labels);
-                                    series1Format.setInterpolationParams(new CatmullRomInterpolator.Params(10, CatmullRomInterpolator.Type.Centripetal));
-                                    plot.addSeries(series1, series1Format);
-                                    plot.setTicksPerRangeLabel(1024);
-                                    plot.getGraphWidget().setDomainLabelOrientation(-45);
-                                }
-
-
-
-                                if(chordDetector.detectedChord != null){
+//	                            volumeText.setText(Double.toString(chordDetector.volume));
+                                if(chordDetector.detectedChord != null && chordDetector.volume > 0.03 ){
                                     chordText.setText(chordDetector.detectedChord.getChordString());
-
-                                    Log.d("detected chord:",chordDetector.detectedChord.getChordString());
+//                                    Log.d("detected chord:",chordDetector.detectedChord.getChordString());
+                                } else {
+	                                chordText.setText("");
                                 }
                             }
                         });

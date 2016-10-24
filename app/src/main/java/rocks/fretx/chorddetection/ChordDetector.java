@@ -1,10 +1,9 @@
 package rocks.fretx.chorddetection;
 
-import android.support.annotation.Nullable;
+import android.util.Log;
 
 import org.jtransforms.fft.DoubleFFT_1D;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -20,7 +19,9 @@ public class ChordDetector extends AudioAnalyzer {
     protected Chord detectedChord;
 
     //Plot
-    double[] magnitudeSpectrum;
+    protected double[] magnitudeSpectrum;
+	protected double volume = 0;
+    protected boolean readLock = true;
 
     public ChordDetector(final int samplingFrequency, final int frameLength, final int frameShift, final List<Chord> targetChords) {
 //        int frameLength = Math.round ((float)audioData.samplingFrequency * CHROMAGRAM_FRAME_LENGTH_IN_S);
@@ -39,8 +40,9 @@ public class ChordDetector extends AudioAnalyzer {
     private double[] getChromagram(short[] audioBuffer){
         //Make sure the buffer length is even
         short[] tmpAudio;
+//	    Log.d("length even?", String.valueOf(((audioBuffer.length % 2) == 0)));
         if((audioBuffer.length % 2) == 0){
-            tmpAudio = audioBuffer;
+            tmpAudio = audioBuffer.clone();
         } else{
             tmpAudio = new short[audioBuffer.length+1];
             for (int i = 0; i < audioBuffer.length; i++) {
@@ -48,37 +50,73 @@ public class ChordDetector extends AudioAnalyzer {
             }
             tmpAudio[audioBuffer.length] = 0;
         }
+
+//	    double acc = 0;
+//	    for (int i = 0; i < audioData.audioBuffer.length; i++) {
+//		    acc += Math.abs(((double)audioData.audioBuffer[i]/32768));
+//	    }
+//	    Log.d("audio buffer sum", Double.toString(acc));
+
         double[] buf = shortToDouble(audioBuffer);
+	    for (int i = 0; i < buf.length; i++) {
+		    buf[i] -= 0.5; //center the signal on 0 before windowing
+	    }
+
+//	    double acc2 = 0;
+//	    for (int i = 0; i < buf.length; i++) {
+//		    acc2 += Math.abs(buf[i]);
+//	    }
+//	    Log.d("audio buffer sum", Double.toString(acc2));
+
         //FFT
+	    double[] window = getHammingWindow(buf.length);
+	    for (int i = 0; i < buf.length; i++) {
+		    buf[i] *= window[i];
+	    }
         DoubleFFT_1D fft = new DoubleFFT_1D(buf.length);
         fft.realForward(buf);
+        //TODO: Lock/unlock magnitudeSpectrum while writing
         //Get Magnitude spectrum from FFT
+        readLock = true;
         magnitudeSpectrum = new double[buf.length/2];
         magnitudeSpectrum[0] = Math.abs(buf[0]);
         magnitudeSpectrum[magnitudeSpectrum.length-1] = Math.abs(buf[1]);
         for (int i = 1; i < magnitudeSpectrum.length-1; i++) {
-            magnitudeSpectrum[i] = Math.sqrt((buf[2*i]*buf[2*i]) + (buf[2*i+1]*buf[2*i+1]));
+            magnitudeSpectrum[i] = ((buf[2*i]*buf[2*i]) + (buf[2*i+1]*buf[2*i+1]));
         }
+
+	    //Normalize and pre-process spectrum
+	    double sum = 0;
+	    for (int i = 0; i < magnitudeSpectrum.length; i++) {
+		    sum+= magnitudeSpectrum[i];
+	    }
+	    for (int i = 0; i < magnitudeSpectrum.length; i++) {
+		    //The sqrt comes from the paper. It's for making the peak differences smaller
+		    magnitudeSpectrum[i] = Math.sqrt(magnitudeSpectrum[i]/sum);
+	    }
+        readLock = false;
+
+
 
         double A1 = 55; //reference note A1 in Hz
         int peakSearchWidth = 2;
-        double[] chromagram = new double[12];
-
-        for (int interval = 0; interval < 11; interval++) {
-            for (int phi = 1; phi < 5; phi++) {
-                for (int harmonic = 1; harmonic < 2; harmonic++) {
-                    int kprime = (int) Math.round( frequencyFromInterval(A1,interval) * (double)phi * (double)harmonic / ((double)samplingFrequency/(double)frameLength) );
-                    int k0 = kprime - (peakSearchWidth*harmonic);
-                    int k1 = kprime + (peakSearchWidth*harmonic);
-                    chromagram[interval] += findMaxValue(magnitudeSpectrum,k0,k1) / harmonic;
+	    int kprime,k0,k1;
+	    double[] chromagram = new double[12];
+	    Arrays.fill(chromagram,0);
+        for (int interval = 0; interval < 12; interval++) {
+            for (int phi = 1; phi <= 5; phi++) {
+                for (int harmonic = 1; harmonic <= 2; harmonic++) {
+                    kprime = (int) Math.round( frequencyFromInterval(A1,interval) * (double)phi * (double)harmonic / ((double)samplingFrequency/(double)frameLength) );
+                    k0 = kprime - (peakSearchWidth*harmonic);
+                    k1 = kprime + (peakSearchWidth*harmonic);
+                    chromagram[interval] += findMaxValue(magnitudeSpectrum, k0, k1) / harmonic;
                 }
             }
         }
-
-        return chromagram;
+	    return chromagram;
     }
 
-    private Chord detectChord(double[] chromagram, List<Chord> targetChords){
+    private Chord detectChord(List<Chord> targetChords,double[] chromagram){
         //Take the square of chromagram so the peak differences are more pronounced. see paper.
         for (int i = 0; i < chromagram.length; i++) {
             chromagram[i] *= chromagram[i];
@@ -106,7 +144,7 @@ public class ChordDetector extends AudioAnalyzer {
     }
 
     private double frequencyFromInterval(double baseNote, int intervalInSemitones){
-        return baseNote * Math.pow(2,intervalInSemitones/12);
+        return baseNote * Math.pow(2,(double)intervalInSemitones/12);
     }
 
     private double findMaxValue(double[] arr, int beginIndex, int endIndex){
@@ -133,7 +171,10 @@ public class ChordDetector extends AudioAnalyzer {
     @Override
     public void process(AudioData inputAudioData) {
         audioData = inputAudioData;
-        if(audioData.length() < frameLength){
+		volume = audioData.getSignalPower();
+//		Log.d("volume",Double.toString(volume));
+	    //TODO: Fix this in PitchDetector too!
+        if(audioData.length() > frameLength){
             maxFrames = (int) Math.ceil( (double)(audioData.length() - frameLength) / (double) frameShift);
         } else {
             maxFrames = 1;
@@ -142,8 +183,8 @@ public class ChordDetector extends AudioAnalyzer {
         head = 0;
         double[] chromagram;
         while((tempBuffer = getNextFrame()) != null ){
-            chromagram = getChromagram(tempBuffer);
-            detectedChord = detectChord(chromagram,targetChords);
+	        chromagram = getChromagram(tempBuffer);
+            detectedChord = detectChord(targetChords, chromagram);
         }
         processingFinished();
     }
