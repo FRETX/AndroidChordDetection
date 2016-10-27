@@ -86,13 +86,22 @@ public class ChordDetector extends AudioAnalyzer {
         }
 
 	    //Normalize and pre-process spectrum
-	    double sum = 0;
-	    for (int i = 0; i < magnitudeSpectrum.length; i++) {
-		    sum+= magnitudeSpectrum[i];
-	    }
-	    for (int i = 0; i < magnitudeSpectrum.length; i++) {
+
+        //Normalize by total energy:
+//	    double sum = 0;
+//	    for (int i = 0; i < magnitudeSpectrum.length; i++) {
+//		    sum+= magnitudeSpectrum[i];
+//	    }
+
+        //Normalize by max peak
+        double maxVal = 0;
+        for (int i = 0; i < magnitudeSpectrum.length; i++) {
+            if(magnitudeSpectrum[i] > maxVal) maxVal = magnitudeSpectrum[i];
+        }
+        double normalizationFactor = maxVal;
+        for (int i = 0; i < magnitudeSpectrum.length; i++) {
 		    //The sqrt comes from the paper. It's for making the peak differences smaller
-		    magnitudeSpectrum[i] = Math.sqrt(magnitudeSpectrum[i]/sum);
+		    magnitudeSpectrum[i] = Math.sqrt(magnitudeSpectrum[i]/ normalizationFactor);
 	    }
         readLock = false;
 
@@ -113,6 +122,7 @@ public class ChordDetector extends AudioAnalyzer {
                 }
             }
         }
+
 	    return chromagram;
     }
 
@@ -121,6 +131,8 @@ public class ChordDetector extends AudioAnalyzer {
         for (int i = 0; i < chromagram.length; i++) {
             chromagram[i] *= chromagram[i];
         }
+
+	    Log.d("Chromagram", Arrays.toString(chromagram));
 
         double[] deltas = new double[targetChords.size()];
         Arrays.fill(deltas,0);
@@ -132,14 +144,21 @@ public class ChordDetector extends AudioAnalyzer {
             for (int j = 0; j < notes.length; j++) {
                 bitMask[notes[j]-1] = 0;
             }
+
+//	        Log.d("Chord",targetChords.get(i).root + " " + targetChords.get(i).type);
+//	        Log.d("Notes",Arrays.toString(notes));
+//	        Log.d("Bitmask " + Integer.toString(i), Arrays.toString(bitMask));
+
+	        //Calculate the normalized total difference with target chord pattern
             for (int j = 0; j < chromagram.length; j++) {
                 deltas[i] += chromagram[j] * bitMask[j];
             }
-            deltas[i] /= notes.length;
+            deltas[i] /= 12-notes.length;
             deltas[i] = Math.sqrt(deltas[i]);
         }
-
+//	    Log.d("deltas", Arrays.toString(deltas));
         int chordIndex = findMinIndex(deltas);
+//	    Log.d("minIndex", Integer.toString(chordIndex));
         return targetChords.get(chordIndex);
     }
 

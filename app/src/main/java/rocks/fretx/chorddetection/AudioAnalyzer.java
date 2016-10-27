@@ -24,7 +24,7 @@ abstract public class AudioAnalyzer {
     public static float[] shortToFloat(short[] audio) {
         float[] output = new float[audio.length];
         for (int i = 0; i < output.length; i++) {
-            output[i] = audio[i] / 32768f;
+            output[i] = (float) audio[i] / 32768f;
         }
         return output;
     }

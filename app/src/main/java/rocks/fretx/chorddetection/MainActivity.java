@@ -13,15 +13,9 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 
 //Plot
 
-import com.androidplot.util.PixelUtils;
-import com.androidplot.xy.SimpleXYSeries;
-import com.androidplot.xy.XYSeries;
-import com.androidplot.xy.*;
 
 //TODO: add BSD 2-clause license for JTransforms
 
@@ -95,9 +89,9 @@ public class MainActivity extends AppCompatActivity {
     private void startAudioThread(){
         //Audio Parameters
         int maxFs = AudioInputHandler.getMaxSamplingFrequency();
-        if(maxFs > 8000){
-            maxFs = 8000;
-        }
+//        if(maxFs > 8000){
+//            maxFs = 8000;
+//        }
 
         int minBufferSize = AudioInputHandler.getMinBufferSize(maxFs);
         double bufferSizeInSeconds = 0.25;

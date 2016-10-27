@@ -148,7 +148,7 @@ public class Chord {
         int[] formula = new int[template.length];
 
         for (int i = 0; i < formula.length; i++) {
-            formula[i] = semitoneLookup[template[i]] + modification[i];
+            formula[i] = semitoneLookup[template[i]-1] + modification[i];
         }
         return formula;
     }

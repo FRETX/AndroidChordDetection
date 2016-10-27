@@ -79,6 +79,7 @@ public class AudioInputHandler implements Runnable {
                 AudioData audioData = new AudioData(audioBuffer,samplingFrequency);
 
                 for(AudioAnalyzer analyzer : audioAnalyzers){
+                    Log.d("AudioInputHandler","calling analyzer");
                     analyzer.process(audioData);
                 }
             }
